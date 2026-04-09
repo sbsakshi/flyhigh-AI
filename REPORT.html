@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FlyHigh-AI: Autonomous Drone Mission Replanner — Project Report</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true, theme:'neutral'});</script>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  html, body { font-family: "Segoe UI", Calibri, Arial, sans-serif; color:#1a1a1a; line-height:1.55; font-size:11pt; }
+  body { max-width: 800px; margin: 0 auto; }
+  .page { page-break-after: always; padding: 10px 0 20px 0; }
+  .page:last-child { page-break-after: auto; }
+  h1 { color:#0b3d91; font-size:22pt; margin-bottom:6px; }
+  h2 { color:#0b3d91; border-bottom:2px solid #0b3d91; padding-bottom:4px; margin-top:18px; font-size:16pt;}
+  h3 { color:#10519e; margin-top:14px; font-size:13pt;}
+  h4 { color:#222; margin-bottom:4px; font-size:11.5pt;}
+  code, pre { font-family: "Cascadia Code", Consolas, monospace; font-size:9.5pt; }
+  pre { background:#f4f6fa; border-left:3px solid #0b3d91; padding:10px 12px; overflow-x:auto; border-radius:4px;}
+  .cover { text-align:center; padding-top:120px; }
+  .cover h1 { font-size:30pt; color:#0b3d91; }
+  .cover .sub { font-size:16pt; color:#444; margin:14px 0; }
+  .cover .authors { margin-top:80px; font-size:13pt; line-height:2; }
+  .cover .footer { margin-top:90px; color:#666; font-size:11pt;}
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:10pt;}
+  th, td { border:1px solid #c3c8d3; padding:6px 9px; text-align:left;}
+  th { background:#e8eef9; color:#0b3d91; }
+  tr:nth-child(even) td { background:#f7f9fc; }
+  .toc li { margin:6px 0; }
+  .figure { text-align:center; margin:14px 0; }
+  .figure .caption { font-size:9.5pt; color:#555; margin-top:5px; font-style:italic;}
+  .mermaid { background:#fafbfd; padding:10px; border-radius:6px; }
+  .badge { display:inline-block; background:#0b3d91; color:#fff; padding:2px 8px; border-radius:10px; font-size:9pt; margin-right:4px;}
+  blockquote { border-left:4px solid #0b3d91; padding:6px 14px; background:#f0f4fb; color:#222; margin:10px 0; }
+  .twocol { display:flex; gap:20px; }
+  .twocol > div { flex:1; }
+  ul { margin:6px 0 6px 20px; }
+  .barchart { width:100%; height:240px; }
+</style>
+</head>
+<body>
+
+<!-- ===================== PAGE 1 — COVER ===================== -->
+<section class="page cover">
+  <div style="font-size:11pt; color:#666;">VIT Chennai &mdash; School of Computer Science and Engineering</div>
+  <h1>FlyHigh&#8209;AI</h1>
+  <div class="sub">Autonomous Drone Mission Replanning<br>using Large Language Models</div>
+  <div style="margin-top:30px; font-size:12pt; color:#444;">Computer Science Project Report</div>
+  <div class="authors">
+    <strong>Submitted by</strong><br>
+    Prajul Jain &mdash; <strong>23BPS1003</strong><br>
+    Sakshi Bansal &mdash; <strong>23BPS1012</strong>
+  </div>
+  <div class="footer">
+    Subject: Drones &mdash; Academic Year 2025&ndash;26
+  </div>
+</section>
+
+<!-- ===================== PAGE 2 — ABSTRACT + TOC ===================== -->
+<section class="page">
+  <h2>Abstract</h2>
+  <p>
+    Modern unmanned aerial vehicles (UAVs) execute pre-planned waypoint missions for delivery, surveying and inspection.
+    However, real-world flights regularly encounter <em>unexpected disruptions</em>&mdash;sudden battery loss, dynamic
+    no-fly zones, or failed waypoints&mdash;that render the original plan infeasible. Traditional rule-based replanners
+    struggle to balance multiple competing constraints (priority, battery, geometry) on the fly.
+  </p>
+  <p>
+    <strong>FlyHigh-AI</strong> proposes a hybrid replanning architecture that combines a deterministic 2D drone
+    simulator, a battery-aware feasibility analyser, and a Large Language Model (LLM) reasoning layer powered by Groq's
+    <code>llama-3.3-70b-versatile</code>. The LLM is constrained by a strict Pydantic output schema and benefits from
+    a deterministic fallback planner if the model fails. The system was benchmarked across five scenarios of varying
+    complexity, achieving a composite score of <strong>0.93/1.0</strong> on the strongest model.
+  </p>
+  <p>
+    This report details the problem, system design, algorithms, AI integration strategy, implementation, results, and
+    future directions of the FlyHigh-AI project.
+  </p>
+
+  <h2>Table of Contents</h2>
+  <ol class="toc">
+    <li>Introduction &amp; Motivation &mdash; Page 3</li>
+    <li>Problem Statement &amp; Objectives &mdash; Page 4</li>
+    <li>Background &amp; Related Work &mdash; Page 4</li>
+    <li>System Architecture &mdash; Page 5</li>
+    <li>Module Breakdown &mdash; Page 6</li>
+    <li>Core Algorithms &mdash; Page 7</li>
+    <li>LLM Integration &amp; Prompt Engineering &mdash; Page 8</li>
+    <li>Implementation &amp; Tech Stack &mdash; Page 9</li>
+    <li>Visualization &amp; Usability &mdash; Page 10</li>
+    <li>Benchmark Results &mdash; Page 11</li>
+    <li>Conclusion &amp; Future Work &mdash; Page 12</li>
+  </ol>
+</section>
+
+<!-- ===================== PAGE 3 — INTRO ===================== -->
+<section class="page">
+  <h2>1. Introduction &amp; Motivation</h2>
+  <p>
+    The global drone market has grown rapidly across delivery (Amazon Prime Air, Zipline), agriculture, public safety,
+    and infrastructure inspection. A typical commercial drone mission consists of an ordered sequence of waypoints,
+    each with a priority and a task type (delivery, survey, inspect, return-to-base). Drones execute these plans
+    autonomously based on a flight controller&rsquo;s pre-programmed instructions.
+  </p>
+  <p>
+    The challenge arises when reality deviates from the plan. Wind gusts can drain batteries faster than expected,
+    new no-fly zones can be issued mid-flight (e.g., due to emergency airspace restrictions), and target waypoints can
+    become inaccessible (locked gate, occupied helipad). When such anomalies occur, the drone must either:
+  </p>
+  <ul>
+    <li>Continue blindly &mdash; risking crash or mission failure.</li>
+    <li>Return to base immediately &mdash; sacrificing potentially high-priority deliverables.</li>
+    <li>Replan intelligently &mdash; choosing what to skip, what to keep, and in what order.</li>
+  </ul>
+  <p>
+    Option 3 is desirable but algorithmically hard: it is a constrained variant of the Travelling Salesman Problem
+    with priority weights and a hard energy budget. Hand-crafted heuristics tend to be brittle.
+  </p>
+
+  <h3>1.1 Why Use a Large Language Model?</h3>
+  <p>
+    LLMs have demonstrated strong performance on structured reasoning tasks when paired with explicit constraints and
+    schema validation. The hypothesis behind FlyHigh-AI is that an LLM, given a pre-computed feasibility analysis and a
+    well-engineered prompt, can <strong>outperform a fixed heuristic</strong> on priority/feasibility trade-offs &mdash;
+    without sacrificing safety, because every LLM output is validated by a deterministic verifier.
+  </p>
+
+  <blockquote>
+    "Use the LLM for <em>strategy</em>, not arithmetic. Pre-compute every battery cost; let the model decide what
+    matters." &mdash; FlyHigh-AI design principle.
+  </blockquote>
+</section>
+
+<!-- ===================== PAGE 4 — PROBLEM + BACKGROUND ===================== -->
+<section class="page">
+  <h2>2. Problem Statement &amp; Objectives</h2>
+  <p><strong>Problem:</strong> Given a drone with limited battery, an ordered list of priority-tagged waypoints, and a
+    set of in-flight anomalies, produce a new safe and high-utility waypoint plan in real time.</p>
+
+  <h4>Objectives</h4>
+  <ol>
+    <li>Build a discrete-time 2D drone simulator with realistic battery drain.</li>
+    <li>Model three classes of in-flight anomaly: battery drop, no-fly zone, waypoint failure.</li>
+    <li>Compute battery feasibility for any waypoint sequence in <code>O(n)</code>.</li>
+    <li>Integrate an LLM (Groq) constrained by a strict Pydantic schema for replanning decisions.</li>
+    <li>Provide a deterministic fallback when the LLM fails or returns invalid output.</li>
+    <li>Visualize the mission, anomalies, and replanning decisions clearly.</li>
+    <li>Benchmark multiple LLMs across scenarios of varying complexity.</li>
+  </ol>
+
+  <h2>3. Background &amp; Related Work</h2>
+  <table>
+    <tr><th>Approach</th><th>Strengths</th><th>Weaknesses</th></tr>
+    <tr><td>A* / Dijkstra</td><td>Optimal pathfinding</td><td>No semantic priority reasoning</td></tr>
+    <tr><td>Genetic Algorithms</td><td>Multi-objective optimisation</td><td>Slow, hard to tune</td></tr>
+    <tr><td>Reinforcement Learning</td><td>Adaptive</td><td>Requires extensive training data</td></tr>
+    <tr><td>Hand-coded heuristics</td><td>Fast, predictable</td><td>Brittle to novel anomalies</td></tr>
+    <tr><td><strong>LLM + verifier (this work)</strong></td><td>Flexible reasoning, fast iteration, no training</td><td>Needs strong validation layer</td></tr>
+  </table>
+
+  <p>
+    The closest analogues are recent works on LLM-driven robotics (e.g.,&nbsp;Google&rsquo;s SayCan, Microsoft&rsquo;s
+    PromptCraft for robotics). FlyHigh-AI applies the <em>LLM&nbsp;+&nbsp;structured&nbsp;output&nbsp;+&nbsp;deterministic
+    fallback</em> pattern specifically to UAV replanning.
+  </p>
+</section>
+
+<!-- ===================== PAGE 5 — ARCHITECTURE ===================== -->
+<section class="page">
+  <h2>4. System Architecture</h2>
+  <p>
+    FlyHigh-AI follows a layered architecture. Each subsystem has a single responsibility and a clean interface,
+    making the system testable and extensible.
+  </p>
+
+  <div class="figure">
+    <div class="mermaid">
+flowchart TD
+    A[Mission Definition] --> B[Drone Simulator]
+    B --> C{Anomaly Detected?}
+    C -- No --> B
+    C -- Yes --> D[Anomaly Injector]
+    D --> E[Feasibility Checker]
+    E --> F[Prompt Builder]
+    F --> G[Groq LLM<br/>llama-3.3-70b]
+    G --> H{Valid JSON +<br/>Schema?}
+    H -- No, retry --> G
+    H -- All retries fail --> I[Fallback Planner<br/>Nearest Neighbour]
+    H -- Yes --> J[Mission.update_order]
+    I --> J
+    J --> B
+    B --> K[Visualization<br/>+ Logs]
+    </div>
+    <div class="caption">Figure 1 &mdash; FlyHigh-AI end-to-end data flow.</div>
+  </div>
+
+  <h3>4.1 Layered View</h3>
+  <ul>
+    <li><span class="badge">Sim</span> Drone physics, mission state, anomaly injector, feasibility checker.</li>
+    <li><span class="badge">AI</span> Prompt builder, LLM client, Pydantic schemas, deterministic fallback.</li>
+    <li><span class="badge">Viz</span> Matplotlib renderer (2D map + reasoning trace).</li>
+    <li><span class="badge">Bench</span> Multi-model scorer (5 scenarios &times; N models).</li>
+    <li><span class="badge">CLI</span> <code>main.py</code> orchestrates a full simulation run.</li>
+  </ul>
+
+  <h3>4.2 Design Principles</h3>
+  <ol>
+    <li><strong>Separation of concerns</strong>: simulation, decision-making, and visualization never share mutable state.</li>
+    <li><strong>Defence in depth</strong>: every LLM output passes three validation layers.</li>
+    <li><strong>Always have a Plan B</strong>: deterministic fallback guarantees the drone never has zero plan.</li>
+    <li><strong>LLM does strategy, code does math</strong>: the LLM never computes battery costs.</li>
+  </ol>
+</section>
+
+<!-- ===================== PAGE 6 — MODULE BREAKDOWN ===================== -->
+<section class="page">
+  <h2>5. Module Breakdown</h2>
+
+  <h3>5.1 Project Structure</h3>
+<pre>flyhigh-AI/
+├── main.py                  # Simulation entry point
+├── requirements.txt
+├── benchmark_results.csv    # Scoring data
+├── benchmark_results.png    # Bar chart
+├── mission_*.png            # Run visualizations
+└── drone_replanner/
+    ├── sim/                 # Simulation subsystem
+    │   ├── drone.py
+    │   ├── mission.py
+    │   ├── anomaly.py
+    │   └── feasibility.py
+    ├── ai/                  # AI replanning subsystem
+    │   ├── schemas.py
+    │   ├── prompt.py
+    │   └── replanner.py
+    ├── viz/visualizer.py
+    └── benchmark/scorer.py</pre>
+
+  <h3>5.2 Module Responsibilities</h3>
+  <table>
+    <tr><th>Module</th><th>Responsibility</th><th>Key Class / Function</th></tr>
+    <tr><td><code>sim/drone.py</code></td><td>2D drone state machine, battery drain</td><td><code>Drone</code>, <code>Position</code></td></tr>
+    <tr><td><code>sim/mission.py</code></td><td>Waypoint list management + state</td><td><code>Mission</code>, <code>Waypoint</code></td></tr>
+    <tr><td><code>sim/anomaly.py</code></td><td>Inject disruptions into simulation</td><td><code>AnomalyInjector</code>, <code>NoFlyZone</code></td></tr>
+    <tr><td><code>sim/feasibility.py</code></td><td>Battery feasibility analysis</td><td><code>check_feasibility()</code></td></tr>
+    <tr><td><code>ai/schemas.py</code></td><td>Strict Pydantic output schema</td><td><code>ReplanDecision</code></td></tr>
+    <tr><td><code>ai/prompt.py</code></td><td>10-section structured prompt builder</td><td><code>build_prompt()</code></td></tr>
+    <tr><td><code>ai/replanner.py</code></td><td>LLM call + retry + fallback</td><td><code>run_replanner()</code></td></tr>
+    <tr><td><code>viz/visualizer.py</code></td><td>2D mission map + reasoning trace</td><td><code>render_mission()</code></td></tr>
+    <tr><td><code>benchmark/scorer.py</code></td><td>Multi-model scoring across scenarios</td><td><code>score_scenario()</code></td></tr>
+    <tr><td><code>main.py</code></td><td>Simulation orchestration loop</td><td><code>run_simulation()</code></td></tr>
+  </table>
+
+  <h3>5.3 Mission Domain Model</h3>
+  <div class="figure">
+    <div class="mermaid">
+classDiagram
+    class Mission {
+      +waypoints: List~Waypoint~
+      +get_remaining_waypoints()
+      +update_order(new_order)
+      +mark_completed(id)
+      +mark_skipped(id, reason)
+    }
+    class Waypoint {
+      +id: int
+      +position: Position
+      +priority: WaypointPriority
+      +type: WaypointType
+      +status: WaypointStatus
+    }
+    class Drone {
+      +position: Position
+      +battery: float
+      +speed: float
+      +move_to_next_waypoint()
+      +apply_battery_drain()
+    }
+    class AnomalyInjector {
+      +inject_specific_anomaly()
+      +inject_random_anomaly()
+    }
+    Mission "1" *-- "many" Waypoint
+    AnomalyInjector ..> Mission : mutates
+    AnomalyInjector ..> Drone : mutates
+    </div>
+    <div class="caption">Figure 2 &mdash; Core domain class diagram.</div>
+  </div>
+</section>
+
+<!-- ===================== PAGE 7 — ALGORITHMS ===================== -->
+<section class="page">
+  <h2>6. Core Algorithms</h2>
+
+  <h3>6.1 Battery Drain Model</h3>
+  <p>The drone simulator uses a simple, calibrated drain model:</p>
+  <pre>drain_percent = (distance_metres / speed_mps) * BATTERY_DRAIN_RATE
+              = flight_time_seconds * 0.8 % per second</pre>
+  <p>Example: travelling 25&nbsp;m at 5&nbsp;m/s &rArr; 5&nbsp;s &times; 0.8 = <strong>4 % drain</strong>.</p>
+
+  <h3>6.2 Feasibility Algorithm (O(n))</h3>
+<pre>function check_feasibility(pos, battery, waypoints, base, speed):
+    drain_per_m = BATTERY_DRAIN_RATE / speed
+    available   = battery - SAFETY_MARGIN   # 5% reserve
+    cumulative  = 0
+    reachable   = []
+    for wp in waypoints:
+        leg = distance(prev, wp) * drain_per_m
+        rtb = distance(wp, base) * drain_per_m
+        if cumulative + leg + rtb &lt;= available:
+            cumulative += leg
+            reachable.append(wp.id)
+            prev = wp.position
+        else:
+            return Result(infeasible_at=wp.id, reachable=reachable)
+    return Result(feasible=True, reachable=reachable)</pre>
+  <p>Complexity: <strong>O(n)</strong> where n is the number of remaining waypoints.</p>
+
+  <h3>6.3 LLM Replanning Loop</h3>
+<pre>function run_replanner(drone, mission, anomalies, feasibility):
+    prompt = build_prompt(...)
+    for attempt in 0..MAX_RETRIES:
+        raw  = groq.chat(prompt, temperature=0.2)
+        try:
+            decision = ReplanDecision.parse(raw)
+            decision.validate_against_mission(mission)
+            return ReplanResult(decision, used_fallback=False)
+        except ValidationError as err:
+            prompt += "Your response was invalid: " + err
+    # All retries failed
+    return _fallback_replan(drone, mission, feasibility)</pre>
+
+  <h3>6.4 Fallback &mdash; Nearest Neighbour with Priority Filter</h3>
+<pre>function _fallback_replan(drone, mission, feasibility):
+    candidates = [wp for wp in mission.remaining()
+                     if wp.id in feasibility.reachable
+                     and wp.priority != LOW]
+    ordered = nearest_neighbour(drone.position, candidates)
+    skipped = [wp for wp in mission.remaining() if wp.id not in ordered]
+    return ReplanDecision(new_order=ordered, skipped=skipped)</pre>
+
+  <h3>6.5 Anomaly &mdash; No&#8209;Fly Zone Geofencing</h3>
+<pre>function inject_no_fly_zone(center, radius):
+    zone = NoFlyZone(center, radius)
+    affected = []
+    for wp in mission.remaining():
+        if distance(wp.position, center) &lt;= radius:
+            mission.mark_blocked(wp.id, "inside no-fly zone")
+            affected.append(wp.id)
+    return InjectionResult(replan_needed = len(affected) &gt; 0)</pre>
+</section>
+
+<!-- ===================== PAGE 8 — LLM + PROMPT ===================== -->
+<section class="page">
+  <h2>7. LLM Integration &amp; Prompt Engineering</h2>
+
+  <h3>7.1 Why Groq?</h3>
+  <p>
+    Groq&rsquo;s LPU inference engine delivers extremely low latency (700&nbsp;ms&ndash;2&nbsp;s) for the
+    <code>llama-3.3-70b-versatile</code> model. Real-time replanning is only viable when the model responds within a
+    few seconds; traditional GPU APIs introduce too much delay.
+  </p>
+
+  <h3>7.2 Output Schema (Pydantic)</h3>
+<pre>class ReplanDecision(BaseModel):
+    reasoning: str
+    new_waypoint_order: list[int]
+    skipped_waypoints: list[SkippedWaypoint]
+    confidence: Literal["high", "medium", "low"]
+    estimated_battery_remaining: float
+    abort_mission: bool = False
+    abort_reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_against_mission(self, mission):
+        # No blocked waypoints in new order
+        # Every remaining waypoint either kept OR skipped
+        # No waypoint in BOTH lists
+        ...</pre>
+
+  <h3>7.3 Prompt Anatomy (10 sections)</h3>
+  <ol>
+    <li>Role declaration ("you are a drone replanner; do NOT do arithmetic")</li>
+    <li>Drone telemetry: position, battery, speed, status</li>
+    <li>Completed waypoints (history)</li>
+    <li>Remaining waypoints, each tagged <code>[REACHABLE]</code> or <code>[OUT-OF-RANGE]</code></li>
+    <li>Blocked waypoints &mdash; explicitly forbidden in output</li>
+    <li>Active anomalies (descriptions)</li>
+    <li>Pre-computed feasibility analysis (battery cost, reachable IDs)</li>
+    <li>Few-shot example with worked JSON answer</li>
+    <li>Output schema declaration</li>
+    <li>Task instruction (priority trade-off rules)</li>
+  </ol>
+
+  <h3>7.4 Three-Layer Validation</h3>
+  <div class="figure">
+    <div class="mermaid">
+flowchart LR
+    L1[LLM Raw Output] --> V1[Layer 1<br/>JSON Parse]
+    V1 --> V2[Layer 2<br/>Pydantic Schema]
+    V2 --> V3[Layer 3<br/>Mission Constraints]
+    V3 --> OK[Valid Plan]
+    V1 -. fail .-> R[Retry Loop]
+    V2 -. fail .-> R
+    V3 -. fail .-> R
+    R -. exhausted .-> FB[Fallback Planner]
+    </div>
+    <div class="caption">Figure 3 &mdash; Validation pipeline ensures the drone never receives an invalid plan.</div>
+  </div>
+
+  <h3>7.5 Sample LLM Response</h3>
+<pre>{
+  "reasoning": "Battery is critically low. WP3 is LOW priority and adds 6.4% cost. Skip WP3, keep CRITICAL WP2 and HIGH WP4, return via WP5.",
+  "new_waypoint_order": [2, 4, 5],
+  "skipped_waypoints": [
+    { "waypoint_id": 3, "reason": "Low priority + battery constraint", "priority_acknowledged": true }
+  ],
+  "confidence": "high",
+  "estimated_battery_remaining": 12.5,
+  "abort_mission": false
+}</pre>
+</section>
+
+<!-- ===================== PAGE 9 — IMPLEMENTATION ===================== -->
+<section class="page">
+  <h2>8. Implementation &amp; Tech Stack</h2>
+
+  <h3>8.1 Technologies</h3>
+  <table>
+    <tr><th>Category</th><th>Technology</th><th>Purpose</th></tr>
+    <tr><td>Language</td><td>Python 3.10+</td><td>Type hints, dataclasses, Pydantic v2</td></tr>
+    <tr><td>LLM API</td><td>Groq SDK (groq&ge;1.1.0)</td><td>Low-latency inference for Llama 3.3 70B</td></tr>
+    <tr><td>Validation</td><td>Pydantic 2.x</td><td>Strict JSON schema for LLM output</td></tr>
+    <tr><td>Visualization</td><td>Matplotlib 3.7+</td><td>2D mission maps + reasoning panels</td></tr>
+    <tr><td>Data analysis</td><td>Pandas 2.x</td><td>Benchmark CSV aggregation</td></tr>
+    <tr><td>Version control</td><td>Git</td><td>Source management</td></tr>
+  </table>
+
+  <h3>8.2 Running the Simulator</h3>
+<pre># Easy mission, no anomalies
+python main.py --mission easy --no-anomaly
+
+# Hard mission with visualization
+python main.py --mission hard --plot --plot-path output.png
+
+# Choose model
+python main.py --mission medium --model llama-3.1-8b-instant</pre>
+
+  <h3>8.3 Code Quality Practices</h3>
+  <ul>
+    <li><strong>Type hints</strong> on every function signature.</li>
+    <li><strong>Dataclasses</strong> for immutable state snapshots.</li>
+    <li><strong>Pydantic <code>frozen=True</code></strong> prevents accidental mutation of LLM outputs.</li>
+    <li><strong>Self-tests</strong> in every module via <code>if __name__ == "__main__"</code>.</li>
+    <li><strong>Defensive parsing</strong> in <code>_extract_json()</code> &mdash; handles markdown fences,
+      brace extraction, and direct JSON.</li>
+  </ul>
+
+  <h3>8.4 Lines of Code Summary</h3>
+  <table>
+    <tr><th>Module</th><th>Approximate LoC</th></tr>
+    <tr><td><code>sim/drone.py</code></td><td>275</td></tr>
+    <tr><td><code>sim/mission.py</code></td><td>340</td></tr>
+    <tr><td><code>sim/anomaly.py</code></td><td>445</td></tr>
+    <tr><td><code>sim/feasibility.py</code></td><td>235</td></tr>
+    <tr><td><code>ai/schemas.py</code></td><td>220</td></tr>
+    <tr><td><code>ai/prompt.py</code></td><td>290</td></tr>
+    <tr><td><code>ai/replanner.py</code></td><td>365</td></tr>
+    <tr><td><code>viz/visualizer.py</code></td><td>175</td></tr>
+    <tr><td><code>main.py</code></td><td>360</td></tr>
+    <tr><td><strong>Total</strong></td><td><strong>&asymp;&nbsp;2,705</strong></td></tr>
+  </table>
+</section>
+
+<!-- ===================== PAGE 10 — VISUALIZATION + USABILITY ===================== -->
+<section class="page">
+  <h2>9. Visualization &amp; Usability</h2>
+
+  <p>
+    Effective visualization is critical for demonstrating drone behaviour to stakeholders. The
+    <code>viz/visualizer.py</code> module produces a two-panel image: a 2D mission map (left) and an LLM reasoning
+    trace (right). Visual elements distinguish completed (green), skipped (grey), and blocked (red) waypoints.
+  </p>
+
+  <div class="figure">
+    <img src="mission_plot.png" alt="Mission visualization" style="max-width:95%; border:1px solid #c3c8d3; border-radius:6px;">
+    <div class="caption">Figure 4 &mdash; Auto-generated mission visualization (mission_plot.png).</div>
+  </div>
+
+  <div class="figure">
+    <img src="mission_replan.png" alt="Mission with replanning" style="max-width:95%; border:1px solid #c3c8d3; border-radius:6px;">
+    <div class="caption">Figure 5 &mdash; Mission run featuring multiple replanning events (mission_replan.png).</div>
+  </div>
+
+  <h3>9.1 Console Usability</h3>
+  <p>
+    A live console reporter prints status every 5 ticks, with banners for anomaly events and replanning decisions.
+    Sample output:
+  </p>
+<pre>Tick 12 | pos=(15.0, 5.0) | bat=72.4% | wp=2 (CRITICAL)
+[!] Anomaly @ tick 14: BATTERY_DROP severity=HIGH (-30%)
+[REPLAN] LLM model=llama-3.3-70b confidence=high
+        new_order=[2, 4, 5]   skipped=[3]
+        reasoning="Skip WP3 (LOW) to preserve RTB margin"
+Tick 20 | pos=(25.5, 8.4) | bat=38.1% | wp=4 (HIGH)
+...
+&gt;&gt;&gt; MISSION COMPLETE: 4/5 waypoints, 1 skipped, battery remaining 9.2%</pre>
+</section>
+
+<!-- ===================== PAGE 11 — RESULTS / BENCHMARK ===================== -->
+<section class="page">
+  <h2>10. Benchmark Results</h2>
+  <p>
+    The benchmark suite evaluates each LLM across 5 scenarios using 4 metrics: <strong>valid JSON</strong>,
+    <strong>feasible plan</strong>, <strong>priority respect</strong>, and <strong>safe return</strong>. The composite
+    score is a weighted average (0.25 / 0.35 / 0.25 / 0.15).
+  </p>
+
+  <h3>10.1 Per-Scenario Composite Scores</h3>
+  <table>
+    <tr><th>Scenario</th><th>Llama&nbsp;3.3&nbsp;70B</th><th>Llama&nbsp;3.1&nbsp;8B</th></tr>
+    <tr><td>S1 &mdash; Easy + Battery Drop</td><td>1.00</td><td>1.00</td></tr>
+    <tr><td>S2 &mdash; Easy + No-Fly Zone</td><td>1.00</td><td>0.85</td></tr>
+    <tr><td>S3 &mdash; Medium + Stacked Anomalies</td><td>0.65</td><td>0.50</td></tr>
+    <tr><td>S4 &mdash; Medium + Waypoint Failure</td><td>1.00</td><td>0.90</td></tr>
+    <tr><td>S5 &mdash; Hard + Critical Battery</td><td>1.00</td><td>0.90</td></tr>
+    <tr><td><strong>Average</strong></td><td><strong>0.93</strong></td><td><strong>0.83</strong></td></tr>
+  </table>
+
+  <h3>10.2 Composite Scores &mdash; Bar Chart</h3>
+  <div class="figure">
+    <svg viewBox="0 0 600 260" class="barchart" xmlns="http://www.w3.org/2000/svg">
+      <!-- axes -->
+      <line x1="50" y1="20" x2="50" y2="220" stroke="#444" stroke-width="1.5"/>
+      <line x1="50" y1="220" x2="580" y2="220" stroke="#444" stroke-width="1.5"/>
+      <!-- y-axis labels -->
+      <text x="20" y="225" font-size="10">0.0</text>
+      <text x="20" y="170" font-size="10">0.25</text>
+      <text x="20" y="120" font-size="10">0.5</text>
+      <text x="20" y="70" font-size="10">0.75</text>
+      <text x="25" y="25" font-size="10">1.0</text>
+      <!-- gridlines -->
+      <line x1="50" y1="170" x2="580" y2="170" stroke="#ddd"/>
+      <line x1="50" y1="120" x2="580" y2="120" stroke="#ddd"/>
+      <line x1="50" y1="70" x2="580" y2="70" stroke="#ddd"/>
+      <!-- bars data: 5 scenarios x 2 models -->
+      <!-- S1 -->
+      <rect x="70"  y="20"  width="30" height="200" fill="#0b3d91"/>
+      <rect x="102" y="20"  width="30" height="200" fill="#5b8def"/>
+      <text x="72" y="240" font-size="9">S1</text>
+      <!-- S2 -->
+      <rect x="170" y="20"  width="30" height="200" fill="#0b3d91"/>
+      <rect x="202" y="50"  width="30" height="170" fill="#5b8def"/>
+      <text x="172" y="240" font-size="9">S2</text>
+      <!-- S3 -->
+      <rect x="270" y="90"  width="30" height="130" fill="#0b3d91"/>
+      <rect x="302" y="120" width="30" height="100" fill="#5b8def"/>
+      <text x="272" y="240" font-size="9">S3</text>
+      <!-- S4 -->
+      <rect x="370" y="20"  width="30" height="200" fill="#0b3d91"/>
+      <rect x="402" y="40"  width="30" height="180" fill="#5b8def"/>
+      <text x="372" y="240" font-size="9">S4</text>
+      <!-- S5 -->
+      <rect x="470" y="20"  width="30" height="200" fill="#0b3d91"/>
+      <rect x="502" y="40"  width="30" height="180" fill="#5b8def"/>
+      <text x="472" y="240" font-size="9">S5</text>
+      <!-- legend -->
+      <rect x="430" y="5" width="12" height="12" fill="#0b3d91"/>
+      <text x="446" y="15" font-size="10">Llama 3.3 70B</text>
+      <rect x="430" y="22" width="12" height="12" fill="#5b8def"/>
+      <text x="446" y="32" font-size="10">Llama 3.1 8B</text>
+    </svg>
+    <div class="caption">Figure 6 &mdash; Composite scores by scenario across models.</div>
+  </div>
+
+  <h3>10.3 Latency Comparison</h3>
+  <table>
+    <tr><th>Model</th><th>Avg latency (ms)</th><th>Avg retries</th><th>Fallback triggered?</th></tr>
+    <tr><td>llama-3.3-70b-versatile</td><td>~1,720</td><td>0.2</td><td>No</td></tr>
+    <tr><td>llama-3.1-8b-instant</td><td>~720</td><td>0.4</td><td>No</td></tr>
+  </table>
+
+  <h3>10.4 Observations</h3>
+  <ul>
+    <li>The 70B model consistently respects priority constraints; the 8B model occasionally drops a HIGH-priority waypoint.</li>
+    <li>Stacked anomalies (S3) are the hardest scenario for both models.</li>
+    <li>The deterministic fallback was never required &mdash; the retry loop with error feedback always recovered.</li>
+  </ul>
+</section>
+
+<!-- ===================== PAGE 12 — CONCLUSION ===================== -->
+<section class="page">
+  <h2>11. Conclusion &amp; Future Work</h2>
+
+  <h3>11.1 Summary</h3>
+  <p>
+    FlyHigh-AI demonstrates that an LLM, paired with a rigorous validation pipeline and a deterministic fallback, can
+    serve as a robust real-time replanner for autonomous drone missions. The system handled all five benchmark
+    scenarios without ever requiring fallback intervention, achieving a composite score of <strong>0.93</strong> on
+    Llama 3.3 70B. The architectural pattern &mdash; <em>LLM for strategic reasoning, code for arithmetic and safety</em>
+    &mdash; generalises to other constrained planning domains.
+  </p>
+
+  <h3>11.2 Contributions</h3>
+  <ul>
+    <li>A modular Python drone simulator with realistic battery physics.</li>
+    <li>A three-layer validation pipeline ensuring safe LLM output.</li>
+    <li>A 10-section structured prompt template for replanning tasks.</li>
+    <li>Reproducible benchmark suite spanning easy to hard scenarios.</li>
+    <li>Publication-quality visualisation with reasoning trace overlay.</li>
+  </ul>
+
+  <h3>11.3 Limitations</h3>
+  <ul>
+    <li>2D simulation only &mdash; altitude and 3D no-fly volumes are not modelled.</li>
+    <li>Wind, payload changes, and sensor noise are abstracted away.</li>
+    <li>Multi-drone coordination is not yet supported.</li>
+    <li>LLM cost / latency may be prohibitive for very low-end commercial drones.</li>
+  </ul>
+
+  <h3>11.4 Future Work</h3>
+  <ol>
+    <li><strong>3D extension</strong> &mdash; integrate altitude, true geographic coordinates, and 3D no-fly volumes.</li>
+    <li><strong>Edge deployment</strong> &mdash; quantised on-device LLM inference (e.g., Llama 3.2 1B).</li>
+    <li><strong>Multi-drone fleet replanning</strong> &mdash; collaborative task reallocation.</li>
+    <li><strong>Real hardware integration</strong> &mdash; PX4 / ArduPilot bridge.</li>
+    <li><strong>Sim-to-real RL</strong> &mdash; train a specialised replanner from LLM traces.</li>
+  </ol>
+
+  <h3>11.5 References</h3>
+  <ol>
+    <li>Ahn, M. et al. (2022). <em>Do As I Can, Not As I Say: Grounding Language in Robotic Affordances.</em> Google Research.</li>
+    <li>Vemprala, S. et al. (2023). <em>ChatGPT for Robotics: Design Principles and Model Abilities.</em> Microsoft.</li>
+    <li>Pydantic Documentation &mdash; https://docs.pydantic.dev/</li>
+    <li>Groq API Reference &mdash; https://console.groq.com/docs</li>
+    <li>Meta AI (2024). <em>The Llama 3 Herd of Models.</em></li>
+    <li>Reinelt, G. (1994). <em>The Travelling Salesman: Computational Solutions for TSP Applications.</em> Springer.</li>
+  </ol>
+
+  <h3>11.6 Acknowledgements</h3>
+  <p>
+    The authors thank the faculty of the School of Computer Science and Engineering, VIT Chennai, for their continuous
+    guidance throughout this project. We also acknowledge Groq Inc. for providing fast LLM inference, and the open
+    source community behind Pydantic, Matplotlib, and Pandas.
+  </p>
+
+  <hr>
+  <p style="text-align:center; color:#666; font-size:10pt; margin-top:20px;">
+    <strong>End of Report</strong> &mdash; FlyHigh-AI &mdash; Prajul Jain (23BPS1003) &amp; Sakshi Bansal (23BPS1012)
+  </p>
+</section>
+
+</body>
+</html>

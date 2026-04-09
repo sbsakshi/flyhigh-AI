@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python main.py)",
+      "Bash(python3 main.py)",
+      "Bash(where py:*)",
+      "Bash(py --version)",
+      "Bash(py main.py)",
+      "Bash(py -m pip install -r requirements.txt)",
+      "Bash(ls -lh /c/Users/Admin/flyhigh-AI/*.gif)"
+    ]
+  }
+}
